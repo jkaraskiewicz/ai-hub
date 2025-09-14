@@ -29,8 +29,10 @@ RUN chmod +x /app/startup.sh
 # Expose ports
 EXPOSE 4096 8080
 
-# Environment variables for API keys
+# Environment variables for API keys and user permissions
 ENV GEMINI_API_KEY=""
 ENV OPENROUTER_API_KEY=""
+ENV PUID=1000
+ENV PGID=1000
 
 CMD ["/app/startup.sh"]

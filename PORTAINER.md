@@ -29,6 +29,8 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     ports:
       - "4096:4096"  # OpenCode API server
     volumes:
@@ -49,10 +51,19 @@ services:
     environment:
       - OPENAI_API_BASE_URL=http://ai-hub:8080/v1
       - OPENAI_API_KEY=dummy-key
+      - WEBUI_SECRET_KEY=opencode-ai-hub-secret-key
+      - CORS_ALLOW_ORIGIN=*
+      - ANONYMIZED_TELEMETRY=false
+      - DO_NOT_TRACK=true
+      - SCARF_NO_ANALYTICS=true
+      - DISABLE_UPDATE_CHECK=true
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     volumes:
       - ./opencode-webui-data:/app/backend/data
     depends_on:
-      - ai-hub
+      ai-hub:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - ai-hub-network
@@ -67,6 +78,16 @@ In Portainer's environment variables section:
 ```env
 OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
 GEMINI_API_KEY=your-gemini-key-here
+PUID=1000
+PGID=1000
+```
+
+**Finding your PUID/PGID:**
+```bash
+# On your host system, run:
+id $USER
+# Example output: uid=1000(username) gid=1000(groupname)
+# Use uid for PUID, gid for PGID
 ```
 
 #### 5. **Deploy Stack**

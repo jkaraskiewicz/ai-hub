@@ -1,0 +1,38 @@
+services:
+  ai-hub:
+    build: .
+    container_name: ai-hub
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    ports:
+      - "4096:4096"  # OpenCode API server (for direct access if needed)
+    volumes:
+      - ./workdir:/app/workdir      # Mount workspace for code editing
+      - ./logs:/app/logs            # Mount logs for persistence
+      - ./opencode-auth:/root/.local/share/opencode  # Persist OpenCode auth
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    networks:
+      - ai-hub-network
+
+  opencode-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: opencode-webui
+    ports:
+      - "3001:8080"  # OpenCode WebUI interface
+    environment:
+      - OPENAI_API_BASE_URL=http://ai-hub:8080/v1
+      - OPENAI_API_KEY=dummy-key  # Required but not used with our proxy
+    volumes:
+      - ./opencode-webui-data:/app/backend/data
+    depends_on:
+      - ai-hub
+    restart: unless-stopped
+    networks:
+      - ai-hub-network
+
+networks:
+  ai-hub-network:
+    driver: bridge

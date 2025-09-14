@@ -1,0 +1,14 @@
+{
+  "name": "opencode-openai-proxy",
+  "version": "1.0.0",
+  "description": "OpenAI API compatible proxy for OpenCode",
+  "main": "opencode-proxy.js",
+  "scripts": {
+    "start": "node opencode-proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5"
+  }
+}

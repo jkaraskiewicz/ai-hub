@@ -1,0 +1,74 @@
+# Secrets and API Keys
+.env
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+auth/
+
+# OpenCode Authentication and Data
+opencode-auth/
+opencode-webui-data/
+
+# Container Data and Logs
+logs/
+*.log
+workdir/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Runtime Data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and Testing
+coverage/
+.nyc_output
+.coverage
+*.lcov
+
+# Backup Files
+*.bak
+*.backup
+*.old
+*.orig
+
+# OS Generated Files
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Local Environment Overrides
+.env.local
+.env.production
+.env.development
+.env.test

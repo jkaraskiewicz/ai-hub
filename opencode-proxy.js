@@ -91,7 +91,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         const userMessage = messages[messages.length - 1]?.content || '';
 
         // Create a new session in OpenCode
-        const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
+        const sessionResponse = await axios.post(`${OPENCODE_API}/sessions`, {
             title: `WebUI Chat - ${new Date().toISOString()}`
         });
 
@@ -106,18 +106,11 @@ app.post('/v1/chat/completions', async (req, res) => {
                 'Connection': 'keep-alive'
             });
 
-            // Start a conversation in OpenCode with the selected model
-            const chatData = {
-                sessionId: sessionId,
-                message: userMessage,
-                model: model
-            };
-
             try {
-                // Use OpenCode's TUI endpoint to send message
-                const opencodeResponse = await axios.post(`${OPENCODE_API}/tui`, {
-                    type: 'chat',
-                    data: chatData
+                // Send message to OpenCode session using correct API endpoint
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
+                    content: userMessage,
+                    model: model
                 });
 
                 // For simplicity, return a non-streaming response formatted as streaming
@@ -129,7 +122,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                     choices: [{
                         index: 0,
                         delta: {
-                            content: opencodeResponse.data.response || 'Response from OpenCode'
+                            content: opencodeResponse.data.content || opencodeResponse.data.message?.content || 'Response from OpenCode'
                         },
                         finish_reason: null
                     }]
@@ -158,30 +151,46 @@ app.post('/v1/chat/completions', async (req, res) => {
             }
         } else {
             // Handle non-streaming response
-            // For now, let's create a simple response
-            // In a real implementation, you'd call OpenCode's API properly
+            try {
+                // Send message to OpenCode session using correct API endpoint
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
+                    content: userMessage,
+                    model: model
+                });
 
-            const response = {
-                id: `chatcmpl-${Date.now()}`,
-                object: 'chat.completion',
-                created: Math.floor(Date.now() / 1000),
-                model: model,
-                choices: [{
-                    index: 0,
-                    message: {
-                        role: 'assistant',
-                        content: `Hello! I'm OpenCode responding via the proxy. You asked: "${userMessage}". I'm using model: ${model}`
-                    },
-                    finish_reason: 'stop'
-                }],
-                usage: {
-                    prompt_tokens: userMessage.length,
-                    completion_tokens: 50,
-                    total_tokens: userMessage.length + 50
-                }
-            };
+                const responseContent = opencodeResponse.data.content || opencodeResponse.data.message?.content || 'No response from OpenCode';
 
-            res.json(response);
+                const response = {
+                    id: `chatcmpl-${Date.now()}`,
+                    object: 'chat.completion',
+                    created: Math.floor(Date.now() / 1000),
+                    model: model,
+                    choices: [{
+                        index: 0,
+                        message: {
+                            role: 'assistant',
+                            content: responseContent
+                        },
+                        finish_reason: 'stop'
+                    }],
+                    usage: {
+                        prompt_tokens: userMessage.length,
+                        completion_tokens: responseContent.length,
+                        total_tokens: userMessage.length + responseContent.length
+                    }
+                };
+
+                res.json(response);
+            } catch (error) {
+                console.error('OpenCode API error in non-streaming:', error.message);
+                res.status(500).json({
+                    error: {
+                        message: `OpenCode API error: ${error.message}`,
+                        type: 'opencode_error',
+                        code: 'chat_failed'
+                    }
+                });
+            }
         }
     } catch (error) {
         console.error('Error in chat completion:', error.message);
@@ -190,6 +199,255 @@ app.post('/v1/chat/completions', async (req, res) => {
                 message: `Proxy error: ${error.message}`,
                 type: 'proxy_error',
                 code: 'internal_error'
+            }
+        });
+    }
+});
+
+// OpenAI API compatibility - Legacy completions endpoint
+app.post('/v1/completions', async (req, res) => {
+    try {
+        const { prompt, model, max_tokens, temperature, stream = false } = req.body;
+
+        console.log(`Completions request for model: ${model}`);
+
+        // Convert to chat format for OpenCode
+        const messages = [{ role: 'user', content: prompt }];
+
+        // Create a new session in OpenCode
+        const sessionResponse = await axios.post(`${OPENCODE_API}/sessions`, {
+            title: `WebUI Completions - ${new Date().toISOString()}`
+        });
+
+        const sessionId = sessionResponse.data.id;
+
+        if (stream) {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
+
+            try {
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
+                    content: prompt,
+                    model: model
+                });
+
+                const responseText = opencodeResponse.data.content || opencodeResponse.data.message?.content || '';
+
+                const completion = {
+                    id: `cmpl-${Date.now()}`,
+                    object: 'text_completion',
+                    created: Math.floor(Date.now() / 1000),
+                    model: model,
+                    choices: [{
+                        text: responseText,
+                        index: 0,
+                        logprobs: null,
+                        finish_reason: 'stop'
+                    }]
+                };
+
+                res.write(`data: ${JSON.stringify(completion)}\n\n`);
+                res.write('data: [DONE]\n\n');
+                res.end();
+
+            } catch (error) {
+                console.error('OpenCode API error in completions streaming:', error.message);
+                res.write(`data: {"error": "OpenCode API error: ${error.message}"}\n\n`);
+                res.end();
+            }
+        } else {
+            try {
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
+                    content: prompt,
+                    model: model
+                });
+
+                const responseText = opencodeResponse.data.content || opencodeResponse.data.message?.content || '';
+
+                const response = {
+                    id: `cmpl-${Date.now()}`,
+                    object: 'text_completion',
+                    created: Math.floor(Date.now() / 1000),
+                    model: model,
+                    choices: [{
+                        text: responseText,
+                        index: 0,
+                        logprobs: null,
+                        finish_reason: 'stop'
+                    }],
+                    usage: {
+                        prompt_tokens: prompt.length,
+                        completion_tokens: responseText.length,
+                        total_tokens: prompt.length + responseText.length
+                    }
+                };
+
+                res.json(response);
+            } catch (error) {
+                console.error('OpenCode API error in completions:', error.message);
+                res.status(500).json({
+                    error: {
+                        message: `OpenCode API error: ${error.message}`,
+                        type: 'opencode_error',
+                        code: 'completion_failed'
+                    }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error in completions:', error.message);
+        res.status(500).json({
+            error: {
+                message: `Proxy error: ${error.message}`,
+                type: 'proxy_error',
+                code: 'internal_error'
+            }
+        });
+    }
+});
+
+// OpenAI API compatibility - Embeddings endpoint
+app.post('/v1/embeddings', async (req, res) => {
+    try {
+        const { input, model = 'text-embedding-ada-002' } = req.body;
+
+        console.log(`Embeddings request for model: ${model}`);
+
+        // OpenCode doesn't have built-in embeddings support, so we'll return a placeholder
+        // In a real implementation, you'd integrate with an embedding model
+        res.status(501).json({
+            error: {
+                message: 'Embeddings not supported by OpenCode. Consider using a dedicated embedding service.',
+                type: 'not_implemented',
+                code: 'embeddings_not_supported'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in embeddings:', error.message);
+        res.status(500).json({
+            error: {
+                message: `Proxy error: ${error.message}`,
+                type: 'proxy_error',
+                code: 'internal_error'
+            }
+        });
+    }
+});
+
+// OpenAI API compatibility - Files endpoint for RAG
+app.get('/v1/files', async (req, res) => {
+    try {
+        console.log('Listing files request');
+
+        // Get file status from OpenCode
+        const statusResponse = await axios.get(`${OPENCODE_API}/file/status`);
+        const trackedFiles = statusResponse.data || [];
+
+        // Convert OpenCode file format to OpenAI format
+        const files = trackedFiles.map((file, index) => ({
+            id: `file-${Date.now()}-${index}`,
+            object: 'file',
+            bytes: file.size || 0,
+            created_at: Math.floor(Date.now() / 1000),
+            filename: file.path || file.name || `file-${index}`,
+            purpose: 'retrieval'
+        }));
+
+        res.json({
+            object: 'list',
+            data: files
+        });
+
+    } catch (error) {
+        console.error('Error listing files:', error.message);
+        res.status(500).json({
+            error: {
+                message: `Failed to list files: ${error.message}`,
+                type: 'opencode_error',
+                code: 'file_list_failed'
+            }
+        });
+    }
+});
+
+app.get('/v1/files/:fileId', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        console.log(`Getting file details for: ${fileId}`);
+
+        // For now, return a generic response since OpenCode doesn't have individual file metadata
+        res.json({
+            id: fileId,
+            object: 'file',
+            bytes: 0,
+            created_at: Math.floor(Date.now() / 1000),
+            filename: `file-${fileId}`,
+            purpose: 'retrieval'
+        });
+
+    } catch (error) {
+        console.error('Error getting file:', error.message);
+        res.status(500).json({
+            error: {
+                message: `Failed to get file: ${error.message}`,
+                type: 'proxy_error',
+                code: 'file_get_failed'
+            }
+        });
+    }
+});
+
+app.post('/v1/files', async (req, res) => {
+    try {
+        console.log('File upload request');
+
+        // OpenCode doesn't have a direct file upload API
+        // This would typically handle file uploads for RAG
+        res.status(501).json({
+            error: {
+                message: 'File uploads not supported. Use OpenCode\'s workspace files for RAG operations.',
+                type: 'not_implemented',
+                code: 'file_upload_not_supported'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error uploading file:', error.message);
+        res.status(500).json({
+            error: {
+                message: `File upload error: ${error.message}`,
+                type: 'proxy_error',
+                code: 'file_upload_failed'
+            }
+        });
+    }
+});
+
+app.delete('/v1/files/:fileId', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        console.log(`Deleting file: ${fileId}`);
+
+        // OpenCode doesn't have a direct file deletion API
+        res.status(501).json({
+            error: {
+                message: 'File deletion not supported through API. Manage files directly in OpenCode workspace.',
+                type: 'not_implemented',
+                code: 'file_delete_not_supported'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error deleting file:', error.message);
+        res.status(500).json({
+            error: {
+                message: `File deletion error: ${error.message}`,
+                type: 'proxy_error',
+                code: 'file_delete_failed'
             }
         });
     }

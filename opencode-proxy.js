@@ -22,42 +22,57 @@ app.get('/v1/models', async (req, res) => {
     try {
         console.log('Fetching models from OpenCode...');
 
-        // Get available models from OpenCode
-        const response = await axios.get(`${OPENCODE_API}/config`);
+        // Get actual models from OpenCode CLI
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
 
-        // For now, we'll create a static list based on known OpenCode models
-        // In a real implementation, you'd parse OpenCode's model list
-        const models = [
-            {
-                id: 'openrouter/deepseek/deepseek-chat-v3.1',
-                object: 'model',
-                created: Date.now(),
-                owned_by: 'openrouter'
-            },
-            {
-                id: 'openrouter/anthropic/claude-sonnet-4',
-                object: 'model',
-                created: Date.now(),
-                owned_by: 'openrouter'
-            },
-            {
-                id: 'openrouter/google/gemini-2.0-flash-exp:free',
-                object: 'model',
-                created: Date.now(),
-                owned_by: 'openrouter'
-            },
-            {
-                id: 'openrouter/deepseek/deepseek-r1:free',
-                object: 'model',
-                created: Date.now(),
-                owned_by: 'openrouter'
-            }
-        ];
+        try {
+            // Execute opencode models command to get the real list
+            const { stdout } = await execAsync('opencode models');
+            const modelLines = stdout.split('\n').filter(line => line.trim() && !line.includes('Error'));
 
-        res.json({
-            object: 'list',
-            data: models
-        });
+            const models = modelLines.map(modelId => {
+                const trimmedId = modelId.trim();
+                if (!trimmedId) return null;
+
+                // Extract provider from model ID
+                let ownedBy = 'opencode';
+                if (trimmedId.includes('openrouter/')) {
+                    ownedBy = 'openrouter';
+                } else if (trimmedId.includes('anthropic/')) {
+                    ownedBy = 'anthropic';
+                } else if (trimmedId.includes('google/')) {
+                    ownedBy = 'google';
+                } else if (trimmedId.includes('openai/')) {
+                    ownedBy = 'openai';
+                }
+
+                return {
+                    id: trimmedId,
+                    object: 'model',
+                    created: Date.now(),
+                    owned_by: ownedBy
+                };
+            }).filter(model => model !== null);
+
+            console.log(`Found ${models.length} models from OpenCode`);
+
+            res.json({
+                object: 'list',
+                data: models
+            });
+
+        } catch (execError) {
+            console.error('Could not execute opencode models command:', execError.message);
+            res.status(500).json({
+                error: {
+                    message: `Failed to fetch models from OpenCode: ${execError.message}`,
+                    type: 'opencode_error',
+                    code: 'model_fetch_failed'
+                }
+            });
+        }
     } catch (error) {
         console.error('Error fetching models:', error.message);
         res.status(500).json({ error: 'Failed to fetch models' });

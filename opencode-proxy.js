@@ -82,16 +82,20 @@ app.get('/v1/models', async (req, res) => {
 // OpenAI API compatibility - Chat completions endpoint
 app.post('/v1/chat/completions', async (req, res) => {
     try {
+        console.log(`Starting chat completion handler`);
         const { messages, model, stream = false } = req.body;
 
         console.log(`Chat completion request for model: ${model}`);
         console.log(`Messages: ${JSON.stringify(messages, null, 2)}`);
+        console.log(`OpenCode API URL: ${OPENCODE_API}`);
 
         // Extract the user message (last message in the array)
         const userMessage = messages[messages.length - 1]?.content || '';
+        console.log(`Extracted user message: ${userMessage}`);
 
         // Create a new session in OpenCode
-        const sessionResponse = await axios.post(`${OPENCODE_API}/sessions`, {
+        console.log(`Creating session at: ${OPENCODE_API}/session`);
+        const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
             title: `WebUI Chat - ${new Date().toISOString()}`
         });
 
@@ -108,10 +112,20 @@ app.post('/v1/chat/completions', async (req, res) => {
 
             try {
                 // Send message to OpenCode session using correct API endpoint
-                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
-                    content: userMessage,
-                    model: model
-                });
+                const requestData = {
+                    parts: [{
+                        type: 'text',
+                        text: userMessage
+                    }],
+                    providerID: model.includes('/') ? model.split('/')[0] : 'openrouter',
+                    modelID: model
+                };
+                console.log(`Sending request to ${OPENCODE_API}/session/${sessionId}/message with data:`, JSON.stringify(requestData, null, 2));
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/session/${sessionId}/message`, requestData);
+
+                // Extract text from the response parts
+                const textParts = opencodeResponse.data.parts?.filter(part => part.type === 'text') || [];
+                const responseText = textParts.map(part => part.text).join('') || 'No response from OpenCode';
 
                 // For simplicity, return a non-streaming response formatted as streaming
                 const completion = {
@@ -122,7 +136,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                     choices: [{
                         index: 0,
                         delta: {
-                            content: opencodeResponse.data.content || opencodeResponse.data.message?.content || 'Response from OpenCode'
+                            content: responseText
                         },
                         finish_reason: null
                     }]
@@ -153,12 +167,20 @@ app.post('/v1/chat/completions', async (req, res) => {
             // Handle non-streaming response
             try {
                 // Send message to OpenCode session using correct API endpoint
-                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
-                    content: userMessage,
-                    model: model
-                });
+                const requestData = {
+                    parts: [{
+                        type: 'text',
+                        text: userMessage
+                    }],
+                    providerID: model.includes('/') ? model.split('/')[0] : 'openrouter',
+                    modelID: model
+                };
+                console.log(`Non-streaming request to ${OPENCODE_API}/session/${sessionId}/message with data:`, JSON.stringify(requestData, null, 2));
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/session/${sessionId}/message`, requestData);
 
-                const responseContent = opencodeResponse.data.content || opencodeResponse.data.message?.content || 'No response from OpenCode';
+                // Extract text from the response parts
+                const textParts = opencodeResponse.data.parts?.filter(part => part.type === 'text') || [];
+                const responseContent = textParts.map(part => part.text).join('') || 'No response from OpenCode';
 
                 const response = {
                     id: `chatcmpl-${Date.now()}`,
@@ -183,6 +205,8 @@ app.post('/v1/chat/completions', async (req, res) => {
                 res.json(response);
             } catch (error) {
                 console.error('OpenCode API error in non-streaming:', error.message);
+                console.error('Error response:', error.response?.data);
+                console.error('Error status:', error.response?.status);
                 res.status(500).json({
                     error: {
                         message: `OpenCode API error: ${error.message}`,
@@ -211,15 +235,13 @@ app.post('/v1/completions', async (req, res) => {
 
         console.log(`Completions request for model: ${model}`);
 
-        // Convert to chat format for OpenCode
-        const messages = [{ role: 'user', content: prompt }];
-
         // Create a new session in OpenCode
-        const sessionResponse = await axios.post(`${OPENCODE_API}/sessions`, {
+        const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
             title: `WebUI Completions - ${new Date().toISOString()}`
         });
 
         const sessionId = sessionResponse.data.id;
+        console.log(`Created OpenCode completions session: ${sessionId}`);
 
         if (stream) {
             res.writeHead(200, {
@@ -229,12 +251,19 @@ app.post('/v1/completions', async (req, res) => {
             });
 
             try {
-                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
-                    content: prompt,
-                    model: model
+                // Send prompt to OpenCode session using correct API endpoint
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/session/${sessionId}/message`, {
+                    parts: [{
+                        type: 'text',
+                        text: prompt
+                    }],
+                    providerID: model.includes('/') ? model.split('/')[0] : 'openrouter',
+                    modelID: model
                 });
 
-                const responseText = opencodeResponse.data.content || opencodeResponse.data.message?.content || '';
+                // Extract text from the response parts
+                const textParts = opencodeResponse.data.parts?.filter(part => part.type === 'text') || [];
+                const responseText = textParts.map(part => part.text).join('') || 'No response from OpenCode';
 
                 const completion = {
                     id: `cmpl-${Date.now()}`,
@@ -260,12 +289,19 @@ app.post('/v1/completions', async (req, res) => {
             }
         } else {
             try {
-                const opencodeResponse = await axios.post(`${OPENCODE_API}/sessions/${sessionId}/message`, {
-                    content: prompt,
-                    model: model
+                // Send prompt to OpenCode session using correct API endpoint
+                const opencodeResponse = await axios.post(`${OPENCODE_API}/session/${sessionId}/message`, {
+                    parts: [{
+                        type: 'text',
+                        text: prompt
+                    }],
+                    providerID: model.includes('/') ? model.split('/')[0] : 'openrouter',
+                    modelID: model
                 });
 
-                const responseText = opencodeResponse.data.content || opencodeResponse.data.message?.content || '';
+                // Extract text from the response parts
+                const textParts = opencodeResponse.data.parts?.filter(part => part.type === 'text') || [];
+                const responseText = textParts.map(part => part.text).join('') || 'No response from OpenCode';
 
                 const response = {
                     id: `cmpl-${Date.now()}`,
@@ -343,17 +379,40 @@ app.get('/v1/files', async (req, res) => {
     try {
         console.log('Listing files request');
 
-        // Get file status from OpenCode
-        const statusResponse = await axios.get(`${OPENCODE_API}/file/status`);
-        const trackedFiles = statusResponse.data || [];
+        // Get files from OpenCode's find/file endpoint
+        let trackedFiles = [];
+        try {
+            // Get all files in the workspace
+            const filesResponse = await axios.get(`${OPENCODE_API}/find/file?query=`);
+            const allFiles = filesResponse.data || [];
+
+            // Filter out node_modules and other unwanted files
+            const workspaceFiles = allFiles.filter(filePath =>
+                !filePath.includes('node_modules/') &&
+                !filePath.includes('.git/') &&
+                !filePath.startsWith('.')
+            );
+
+            trackedFiles = workspaceFiles.map(filePath => ({
+                path: filePath,
+                name: filePath.split('/').pop(),
+                // We don't have size info from this endpoint
+                size: 0
+            }));
+
+            console.log(`Found ${trackedFiles.length} workspace files`);
+        } catch (fileError) {
+            console.warn('Could not fetch files from OpenCode:', fileError.message);
+            trackedFiles = [];
+        }
 
         // Convert OpenCode file format to OpenAI format
-        const files = trackedFiles.map((file, index) => ({
-            id: `file-${Date.now()}-${index}`,
+        const files = trackedFiles.map((file) => ({
+            id: `file-${Buffer.from(file.path).toString('base64')}`,
             object: 'file',
             bytes: file.size || 0,
             created_at: Math.floor(Date.now() / 1000),
-            filename: file.path || file.name || `file-${index}`,
+            filename: file.name || file.path,
             purpose: 'retrieval'
         }));
 
@@ -379,15 +438,43 @@ app.get('/v1/files/:fileId', async (req, res) => {
         const { fileId } = req.params;
         console.log(`Getting file details for: ${fileId}`);
 
-        // For now, return a generic response since OpenCode doesn't have individual file metadata
-        res.json({
-            id: fileId,
-            object: 'file',
-            bytes: 0,
-            created_at: Math.floor(Date.now() / 1000),
-            filename: `file-${fileId}`,
-            purpose: 'retrieval'
-        });
+        // Extract filename from fileId (format: file-<base64-encoded-path>)
+        if (fileId.startsWith('file-')) {
+            try {
+                const encodedPath = fileId.substring(5); // Remove 'file-' prefix
+                const filePath = Buffer.from(encodedPath, 'base64').toString('utf-8');
+
+                console.log(`Decoded file path: ${filePath}`);
+
+                res.json({
+                    id: fileId,
+                    object: 'file',
+                    bytes: 0, // We don't have size info readily available
+                    created_at: Math.floor(Date.now() / 1000),
+                    filename: filePath.split('/').pop(),
+                    purpose: 'retrieval'
+                });
+            } catch (decodeError) {
+                console.error('Error decoding file ID:', decodeError.message);
+                res.json({
+                    id: fileId,
+                    object: 'file',
+                    bytes: 0,
+                    created_at: Math.floor(Date.now() / 1000),
+                    filename: `file-${fileId}`,
+                    purpose: 'retrieval'
+                });
+            }
+        } else {
+            res.json({
+                id: fileId,
+                object: 'file',
+                bytes: 0,
+                created_at: Math.floor(Date.now() / 1000),
+                filename: `file-${fileId}`,
+                purpose: 'retrieval'
+            });
+        }
 
     } catch (error) {
         console.error('Error getting file:', error.message);

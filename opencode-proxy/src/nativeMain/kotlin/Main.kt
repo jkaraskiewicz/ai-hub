@@ -1,32 +1,37 @@
+import config.AppConfig
+import config.toUrl
+import di.applicationModule
+import di.httpModule
+import di.utilsModule
 import io.ktor.server.application.Application
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.application.install
 import io.ktor.server.engine.*
 import io.ktor.server.cio.*
-import kotlinx.serialization.json.Json
-import models.ErrorDetail
-import models.ErrorResponse
-import routes.configureApiRoutes
-import services.OpenCodeService
-import services.SessionService
+import org.koin.ktor.ext.get
+import org.koin.ktor.plugin.Koin
+import routes.configureRouting
+import utils.logger.Logger
 
 fun main() {
-  // Start the server
   embeddedServer(CIO, port = 8080, host = "0.0.0.0") {
+    configureDI()
     configureRouting()
-    println("🚀 OpenCode-OpenAI Proxy Server starting...")
-    println("📍 Server: http://0.0.0.0:8080")
-    println("🔗 OpenCode API: http://localhost:4096")
-    println("✅ Ready for Open WebUI integration")
+    printStatus()
   }.start(wait = true)
 }
 
-
-fun Application.configureRouting() {
-  routing {
-    get("/") {
-      call.respondText("Hello, world!")
-    }
+private fun Application.configureDI() {
+  install(Koin) {
+    modules(applicationModule, utilsModule, httpModule)
   }
 }
 
+private fun Application.printStatus() {
+  val appConfig = get<AppConfig>()
+  get<Logger>().run {
+    log("🚀 OpenCode-OpenAI Proxy Server starting...")
+    log("📍 Server: ${appConfig.serverConfig.toUrl()}")
+    log("🔗 OpenCode API: ${appConfig.clientConfig.toUrl()}")
+    log("✅ Ready for Open WebUI integration")
+  }
+}

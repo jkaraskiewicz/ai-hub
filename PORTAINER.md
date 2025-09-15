@@ -6,7 +6,7 @@ After each push to your repository, GitHub Actions automatically builds and push
 
 ### 📦 Image Location
 ```
-ghcr.io/your-username/your-repo-name:latest
+ghcr.io/jkaraskiewicz/ai-hub:latest
 ```
 
 ### 🔧 Portainer Setup Steps
@@ -24,7 +24,7 @@ ghcr.io/your-username/your-repo-name:latest
 ```yaml
 services:
   ai-hub:
-    image: ghcr.io/YOUR_USERNAME/YOUR_REPO_NAME:latest
+    image: ghcr.io/jkaraskiewicz/ai-hub:latest
     container_name: ai-hub
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}

@@ -8,6 +8,41 @@ const app = express();
 const PORT = 8080;
 const OPENCODE_API = 'http://localhost:4096';
 
+// Session management: Map conversation IDs to OpenCode session IDs
+const conversationSessions = new Map();
+
+// Helper function to create a conversation ID from messages
+function getConversationId(messages) {
+    // Create a stable ID based on the first user message content
+    // This allows us to identify the same conversation across requests
+    if (messages && messages.length > 0) {
+        const firstUserMessage = messages.find(m => m.role === 'user')?.content || '';
+        const hash = Buffer.from(firstUserMessage).toString('base64').slice(0, 16);
+        return `conv_${hash}`;
+    }
+    return `conv_${Date.now()}`;
+}
+
+// Helper function to get or create OpenCode session for a conversation
+async function getOrCreateSession(conversationId, messages) {
+    if (conversationSessions.has(conversationId)) {
+        const sessionId = conversationSessions.get(conversationId);
+        console.log(`Reusing existing session: ${sessionId} for conversation: ${conversationId}`);
+        return sessionId;
+    }
+
+    // Create new OpenCode session
+    const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
+        title: `WebUI Chat - ${new Date().toISOString()}`
+    });
+
+    const sessionId = sessionResponse.data.id;
+    conversationSessions.set(conversationId, sessionId);
+    console.log(`Created new session: ${sessionId} for conversation: ${conversationId}`);
+
+    return sessionId;
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -89,18 +124,14 @@ app.post('/v1/chat/completions', async (req, res) => {
         console.log(`Messages: ${JSON.stringify(messages, null, 2)}`);
         console.log(`OpenCode API URL: ${OPENCODE_API}`);
 
+        // Get or create session for this conversation
+        const conversationId = getConversationId(messages);
+        console.log(`Generated conversation ID: ${conversationId} for ${messages.length} messages`);
+        const sessionId = await getOrCreateSession(conversationId, messages);
+
         // Extract the user message (last message in the array)
         const userMessage = messages[messages.length - 1]?.content || '';
         console.log(`Extracted user message: ${userMessage}`);
-
-        // Create a new session in OpenCode
-        console.log(`Creating session at: ${OPENCODE_API}/session`);
-        const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
-            title: `WebUI Chat - ${new Date().toISOString()}`
-        });
-
-        const sessionId = sessionResponse.data.id;
-        console.log(`Created OpenCode session: ${sessionId}`);
 
         if (stream) {
             // Handle streaming response
@@ -235,13 +266,10 @@ app.post('/v1/completions', async (req, res) => {
 
         console.log(`Completions request for model: ${model}`);
 
-        // Create a new session in OpenCode
-        const sessionResponse = await axios.post(`${OPENCODE_API}/session`, {
-            title: `WebUI Completions - ${new Date().toISOString()}`
-        });
-
-        const sessionId = sessionResponse.data.id;
-        console.log(`Created OpenCode completions session: ${sessionId}`);
+        // For completions, create a simple conversation ID based on prompt
+        const fakeMessages = [{ role: 'user', content: prompt }];
+        const conversationId = getConversationId(fakeMessages);
+        const sessionId = await getOrCreateSession(conversationId, fakeMessages);
 
         if (stream) {
             res.writeHead(200, {

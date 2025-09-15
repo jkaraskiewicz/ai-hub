@@ -38,6 +38,11 @@ kotlin {
       // Ktor client
       implementation("io.ktor:ktor-client-core:3.2.3")
       implementation("io.ktor:ktor-client-cio:3.2.3")
+      implementation("io.ktor:ktor-client-content-negotiation:3.2.3")
+
+      // Ktor server content negotiation
+      implementation("io.ktor:ktor-server-content-negotiation:3.2.3")
+      implementation("io.ktor:ktor-serialization-kotlinx-json:3.2.3")
 
       // Serialization
       implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")

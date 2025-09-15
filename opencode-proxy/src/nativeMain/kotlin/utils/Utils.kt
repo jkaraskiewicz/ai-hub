@@ -20,16 +20,6 @@ fun generateId(prefix: String): String {
   return "$prefix-${Clock.System.now().epochSeconds}"
 }
 
-/**
- * Extract text content from OpenCode response parts
- */
-fun extractTextFromParts(parts: List<models.MessageResponsePart>): String {
-  return parts
-    .filter { it.type == "text" }
-    .mapNotNull { it.text }
-    .joinToString("")
-    .ifEmpty { "No response from OpenCode" }
-}
 
 /**
  * Estimate token count (simple approximation)

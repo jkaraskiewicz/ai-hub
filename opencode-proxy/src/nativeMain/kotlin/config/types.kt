@@ -3,6 +3,12 @@ package config
 data class AppConfig(
   val serverConfig: HostConfig,
   val clientConfig: HostConfig,
+  val apiKeys: ApiKeysConfig,
+)
+
+data class ApiKeysConfig(
+  val openRouterApiKey: String?,
+  val geminiApiKey: String?,
 )
 
 data class HostConfig(
